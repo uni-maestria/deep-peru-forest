@@ -1,10 +1,15 @@
-\documentclass[11pt,a4paper]{article}
+% \documentclass[11pt,a4paper]{article}
+\documentclass{article}
+
+% Empleamos la plantilla oficial de NeurIPS 2026 en formato preprint para el reporte
+\usepackage[preprint]{neurips_2026}
 
 % --- Paquetes ---
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[spanish,es-noquoting]{babel}
-\usepackage[margin=2.5cm]{geometry}
+\usepackage[spanish,es-tabla,es-noquoting]{babel}
+% \usepackage[margin=2.5cm]{geometry}
+\usepackage{geometry}
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{amsmath}
@@ -12,14 +17,57 @@
 \usepackage{xcolor}
 \usepackage[hidelinks]{hyperref}
 
+\usepackage{tabularx}
+
+
+\usepackage[spanish,es-tabla]{babel} % Soporte para español e internacionalización de tablas
+\usepackage{hyperref}       % Hipervínculos
+\usepackage{url}            % Formateo de URLs
+\usepackage{booktabs}       % Tablas de calidad profesional
+\usepackage{amsfonts}       % Fuentes matemáticas de la AMS
+\usepackage{nicefrac}       % Fracciones compactas
+\usepackage{microtype}      % Mejoras en la microtipografía
+
+\usepackage{subcaption}     % Subfiguras
+\usepackage{listings}       % Listados de código fuente
+
+
+\usepackage{placeins}
+\usepackage{float}
+
+
 \title{\textbf{Detección de deforestación en Perú con U-Net}\\
 \large Detección de cambio (\textit{before/after}) sobre imágenes Sentinel-2}
-\author{Proyecto final --- MIA-07: Redes Neuronales y Aprendizaje Profundo}
-\date{\today}
+
+% \author{Proyecto final --- MIA-07: Redes Neuronales y Aprendizaje Profundo}
+% \date{\today}
+
+\author{%
+  \textbf{Andres Flores} \\
+  Unidad de Posgrado - FIIS \\
+  Universidad Nacional de Ingeniería \\
+  \texttt{affloresb@uni.pe} \\
+  \and
+  \textbf{Victor Lazo} \\
+  Unidad de Posgrado - FIIS \\
+  Universidad Nacional de Ingeniería \\
+  \texttt{vlazop@uni.pe} \\
+  \AND % Resetea la línea horizontal para los siguientes dos autores
+  \textbf{Rubén López} \\
+  Unidad de Posgrado - FIIS \\
+  Universidad Nacional de Ingeniería \\
+  \texttt{ruben.lopez.m@uni.pe} \\
+  \and
+ \textbf{Juan Quispe} \\
+ Unidad de Posgrado - FIIS \\
+  Universidad Nacional de Ingeniería \\
+  \texttt{juan.quispe.h@uni.pe}
+}
+
+
 
 \begin{document}
 \maketitle
-
 \begin{abstract}
 \noindent
 Se aborda la detección de deforestación en la Amazonía peruana sobre imágenes
@@ -40,24 +88,16 @@ El objetivo es detectar deforestación en la Amazonía peruana sobre imágenes S
 usando como etiquetas los polígonos oficiales de \textbf{SERFOR}
 (\texttt{deforestacion.geojson}, 9.910 polígonos).
 
-El hallazgo clave del análisis inicial es que las etiquetas SERFOR \textbf{no marcan todo
-el suelo desnudo}, sino la \textbf{deforestación ocurrida en un período específico}. Cada
-polígono trae dos fechas, \texttt{FESATA} (antes) y \texttt{FESATB} (después), y señala
-solo el cambio entre ellas. Por eso el problema es de \textbf{detección de cambio}, no de
-segmentación sobre una sola imagen.
+El hallazgo clave del análisis inicial es que las etiquetas SERFOR \textbf{no marcan todo el suelo desnudo}, sino la \textbf{deforestación ocurrida en un período específico}. Cada polígono trae dos fechas, \texttt{FESATA} (antes) y \texttt{FESATB} (después), y señala solo el cambio entre ellas. Por eso el problema es de \textbf{detección de cambio}, no de segmentación sobre una sola imagen.
 
-Con una sola imagen el modelo no puede distinguir un clareo nuevo de uno antiguo (ambos
-son suelo desnudo). La solución fue usar un \textbf{par de imágenes} del mismo lugar: una
-\emph{antes} (cercana a \texttt{FESATA}, bosque en pie) y otra \emph{después} (cercana a
-\texttt{FESATB}, ya clareado). El modelo aprende el cambio verde$\rightarrow$café, que es
-exactamente lo que marca el polígono.
+Con una sola imagen el modelo no puede distinguir un clareo nuevo de uno antiguo (ambos son suelo desnudo). La solución fue usar un \textbf{par de imágenes} del mismo lugar: una \emph{antes} (cercana a \texttt{FESATA}, bosque en pie) y otra \emph{después} (cercana a \texttt{FESATB}, ya clareado). El modelo aprende el cambio verde$\rightarrow$café, que es exactamente lo que marca el polígono.
 
 \section{Pipeline}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \small
-\begin{tabular}{@{}p{4.2cm}p{9.5cm}@{}}
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
 \toprule
 \textbf{Notebook} & \textbf{Función} \\
 \midrule
@@ -67,8 +107,12 @@ exactamente lo que marca el polígono.
 \texttt{04\_dataset\_parches} & Empareja imágenes y máscaras; separa train/val/test \emph{por escena} (sin fuga de datos). \\
 \texttt{05\_modelo\_unet} & Entrena la U-Net. \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
+
+
+
+
 
 \subsection*{Mejora de etiquetas: curador web}
 
@@ -260,7 +304,7 @@ mejora de 70\% a 78\% solo con auditar (mejorar) las etiquetas de referencia, si
 cambiar el modelo (Figura~\ref{fig:literatura}), lo que confirma que la calidad de las
 etiquetas es el factor limitante.
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.85\textwidth]{figuras/comparacion_literatura.png}
 \caption{Comparación referencial del F1-score con Torres et al.~\cite{torres2021deforestation}
@@ -288,8 +332,14 @@ La vía con mayor impacto esperado es \textbf{mejorar las etiquetas}, no la arqu
         nubes o bordes mal delimitados).
 \end{itemize}
 
-\bibliographystyle{ieeetr}
+% \FloatBarrier
+% \clearpage
+\bibliographystyle{plainnat}
+\nocite{*}                  % Muestra todas las referencias aunque no estén citadas en el texto
 \bibliography{referencias}
+
+
+
 
 \vspace{1em}
 \noindent\rule{\textwidth}{0.4pt}\\
