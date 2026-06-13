@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deforestación Perú — Detección de cambio Sentinel-2</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#2a3340;
+    --txt:#e6edf3; --mut:#8b98a5; --accent:#3fb950; --accent2:#58a6ff; --danger:#f85149;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--txt)}
+  #app{display:grid;grid-template-columns:380px 1fr;height:100vh}
+  /* ---- sidebar ---- */
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:14px}
+  h1{font-size:16px;margin:0;letter-spacing:.2px}
+  h1 small{display:block;color:var(--mut);font-weight:400;font-size:11px;margin-top:3px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 10px}
+  label.field{display:block;font-size:12px;color:var(--mut);margin:8px 0 4px}
+  input,select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    border-radius:7px;padding:7px 8px;font-size:13px;font-family:inherit}
+  input[type=range]{padding:0;accent-color:var(--accent)}
+  .row{display:flex;gap:8px}
+  .row>div{flex:1}
+  .btn{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--txt);border-radius:8px;
+    padding:9px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn:hover{border-color:var(--accent2)}
+  .btn.on{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#06210e;border-color:var(--accent);font-weight:600}
+  .btn.primary:disabled{opacity:.5;cursor:not-allowed}
+  .rangeval{display:flex;justify-content:space-between;font-size:12px;color:var(--mut)}
+  .rangeval b{color:var(--txt)}
+  .aoi-info{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
+  .aoi-info b{color:var(--accent)}
+  .hint{font-size:11px;color:var(--mut);line-height:1.45}
+  .err{background:rgba(248,81,73,.12);border:1px solid var(--danger);color:#ffb3ae;
+    border-radius:8px;padding:9px;font-size:12px;display:none}
+  /* ---- results ---- */
+  .results{display:none;flex-direction:column;gap:10px}
+  .thumbs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;aspect-ratio:1}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb .ov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .thumb span{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.6);font-size:10px;
+    padding:2px 6px;border-radius:5px;color:#fff}
+  .thumb.wide{grid-column:1/3;aspect-ratio:2/1}
+  .stat{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--line)}
+  .stat:last-child{border:0}
+  .stat span{color:var(--mut)} .stat b{color:var(--txt)}
+  .big{color:var(--accent);font-size:15px}
+  /* ---- map ---- */
+  #map{position:relative}
+  .map-tools{position:absolute;top:12px;left:12px;z-index:5;display:flex;gap:8px}
+  .map-tools button{background:rgba(13,17,23,.9);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;backdrop-filter:blur(6px)}
+  .map-tools button.on{border-color:var(--accent);color:var(--accent)}
+  .overlay-ctl{position:absolute;bottom:14px;left:12px;z-index:5;background:rgba(13,17,23,.92);
+    border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:12px;display:none;
+    backdrop-filter:blur(6px);width:200px}
+  .overlay-ctl .ov-title{font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--mut);margin-bottom:8px}
+  .overlay-ctl label{display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;
+    white-space:nowrap;font-size:12px}
+  .overlay-ctl label input[type=checkbox]{flex:none;margin:0;accent-color:var(--accent)}
+  .overlay-ctl .ov-op{display:flex;align-items:center;gap:8px;margin-top:9px;
+    padding-top:9px;border-top:1px solid var(--line);color:var(--mut)}
+  .overlay-ctl .ov-op input[type=range]{flex:1;width:auto;accent-color:var(--accent)}
+  .spinner{position:absolute;inset:0;z-index:9;background:rgba(13,17,23,.7);display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--mut);font-size:13px}
+  .spinner.on{display:flex}
+  .ring{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1>Deforestación Perú
+      <small>Detección de cambio · U-Net 8 bandas · Sentinel-2</small></h1>
+
+    <div class="err" id="err"></div>
+
+    <div class="card">
+      <h2>1 · Endpoint de la API</h2>
+      <input type="text" id="api-base" placeholder="https://...trycloudflare.com">
+      <div class="hint" style="margin-top:6px">Pega la URL pública que imprime el
+        notebook de Colab. Vacío = mismo origen.
+        <span id="api-stat"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>2 · Área de interés</h2>
+      <label class="field">Zonas de deforestación en Perú</label>
+      <select id="hotspots"><option value="">— elige una zona —</option></select>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="t-draw">✏ Dibujar AOI</button>
+        <button class="btn" id="t-view">🗺 Usar vista</button>
+      </div>
+      <div class="aoi-info" id="aoi-info">Elige una zona conocida, o dibuja un rectángulo.</div>
+      <div class="hint" style="margin-top:6px">Usa un área chica (~1-3 km). El modelo
+        trabaja a 128 px; un AOI grande se ve borroso y detecta peor.</div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Fechas</h2>
+      <div class="row">
+        <div>
+          <label class="field">Antes</label>
+          <input type="date" id="d-before" value="2019-06-15">
+        </div>
+        <div>
+          <label class="field">Después</label>
+          <input type="date" id="d-after" value="2020-08-15">
+        </div>
+      </div>
+      <label class="field">Ventana de búsqueda: ± <b id="win-v">45</b> días</label>
+      <input type="range" id="win" min="10" max="120" value="45">
+    </div>
+
+    <div class="card">
+      <h2>4 · Parámetros</h2>
+      <label class="field">Nubosidad máx</label>
+      <div class="rangeval"><span>0%</span><b id="cloud-v">30%</b></div>
+      <input type="range" id="cloud" min="0" max="100" value="30">
+      <div class="hint">La nubosidad es de la escena completa (~100 km), no del AOI:
+        una escena "despejada" puede tener nube sobre tu área.</div>
+      <label class="field">Umbral de detección</label>
+      <div class="rangeval"><span>0.1</span><b id="thr-v">0.50</b></div>
+      <input type="range" id="thr" min="10" max="90" value="50">
+      <div class="hint">Umbral 0.7 da el mejor F1 en test (0.58).</div>
+    </div>
+
+    <button class="btn primary" id="run" disabled>⚡ Generar predicción</button>
+
+    <div class="results" id="results" style="display:none">
+      <div class="card">
+        <h2>Resultado</h2>
+        <div class="thumbs">
+          <div class="thumb"><span>Antes</span><img id="r-before"></div>
+          <div class="thumb"><span>Después</span><img id="r-after"></div>
+          <div class="thumb wide"><span>Cambio detectado</span>
+            <img id="r-after2"><img class="ov" id="r-mask"></div>
+        </div>
+      </div>
+      <div class="card" id="stats"></div>
+    </div>
+  </aside>
+
+  <div id="map">
+    <div class="map-tools">
+      <button id="t-draw2" class="on">Pan</button>
+    </div>
+    <div class="overlay-ctl" id="ov-ctl">
+      <div class="ov-title">Capas</div>
+      <label><input type="checkbox" id="ck-before"> Imagen "antes"</label>
+      <label><input type="checkbox" id="ck-after" checked> Imagen "después"</label>
+      <label><input type="checkbox" id="ck-mask" checked> Máscara de cambio</label>
+      <div class="ov-op"><span>Opacidad</span>
+        <input type="range" id="op-mask" min="0" max="100" value="90"></div>
+    </div>
+    <div class="spinner" id="spin"><div class="ring"></div><div id="spin-txt">Buscando escenas…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const apiBase = () => ($("api-base").value.trim() || location.origin).replace(/\/$/, "");
+$("api-base").value = localStorage.getItem("defo_api_base") || "";
+$("api-base").oninput = () => localStorage.setItem("defo_api_base", $("api-base").value.trim());
+
+// ---- mapa ----
+const map = new maplibregl.Map({
+  container: "map", hash: false,
+  style: { version: 8,
+    sources: { gsat: { type: "raster",
+      tiles: ["https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+              "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+              "https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
+      tileSize: 256, attribution: "© Google" } },
+    layers: [ {id:"bg",type:"background",paint:{"background-color":"#0d1117"}},
+              {id:"gsat",type:"raster",source:"gsat"} ] },
+  center: [-73.5, -9.5], zoom: 5.2,
+});
+map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+let bbox = null;          // [w,s,e,n]
+let mode = "pan";         // pan | draw
+let corner1 = null;
+
+map.on("load", () => {
+  map.addSource("aoi", {type:"geojson", data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"aoi-fill",type:"fill",source:"aoi",
+    paint:{"fill-color":"#3fb950","fill-opacity":0.12}});
+  map.addLayer({id:"aoi-line",type:"line",source:"aoi",
+    paint:{"line-color":"#3fb950","line-width":2}});
+});
+
+function rectGeo(b){ const[w,s,e,n]=b;
+  return {type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",
+    coordinates:[[[w,s],[e,s],[e,n],[w,n],[w,s]]]}}]}; }
+
+function setBbox(b){
+  bbox = [Math.min(b[0],b[2]),Math.min(b[1],b[3]),Math.max(b[0],b[2]),Math.max(b[1],b[3])];
+  map.getSource("aoi").setData(rectGeo(bbox));
+  const km = haversineKm(bbox);
+  $("aoi-info").innerHTML = `<b>AOI fijado.</b><br>${bbox.map(v=>v.toFixed(4)).join(", ")}` +
+    `<br>~${km.w.toFixed(1)} × ${km.h.toFixed(1)} km`;
+  $("run").disabled = false;
+}
+function haversineKm(b){ const[w,s,e,n]=b, R=6371, lat=(s+n)/2*Math.PI/180;
+  return { w:Math.abs((e-w)*Math.PI/180)*R*Math.cos(lat), h:Math.abs((n-s)*Math.PI/180)*R }; }
+
+function setMode(m){
+  mode = m;
+  $("t-draw").classList.toggle("on", m==="draw");
+  $("t-draw2").textContent = m==="draw" ? "Dibujando… (2 clics)" : "Pan";
+  $("t-draw2").classList.toggle("on", m==="draw");
+  map.getCanvas().style.cursor = m==="draw" ? "crosshair" : "";
+  corner1 = null;
+}
+$("t-draw").onclick = () => setMode(mode==="draw" ? "pan" : "draw");
+$("t-view").onclick = () => { const b=map.getBounds();
+  setBbox([b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]); setMode("pan"); };
+
+// ---- zonas de deforestación más reportadas en Perú ----
+// Centros aproximados; el usuario afina con "Dibujar AOI" si hace falta.
+const HOTSPOTS = [
+  {n:"La Pampa", r:"Madre de Dios", c:"minería de oro ilegal", lon:-69.86, lat:-12.92},
+  {n:"Huepetuhe", r:"Madre de Dios", c:"minería de oro", lon:-70.50, lat:-13.13},
+  {n:"Delta-1 / Guacamayo", r:"Madre de Dios", c:"minería de oro", lon:-70.30, lat:-12.99},
+  {n:"Iberia – Tahuamanu", r:"Madre de Dios", c:"palma aceitera", lon:-69.49, lat:-11.38},
+  {n:"Tamshiyacu", r:"Loreto", c:"cacao (caso United Cacao)", lon:-73.16, lat:-3.98},
+  {n:"Nueva Requena", r:"Ucayali", c:"palma / colonias menonitas", lon:-74.85, lat:-8.33},
+  {n:"Santa Clara de Uchunya", r:"Ucayali", c:"palma / conflicto Shipibo", lon:-74.90, lat:-8.43},
+  {n:"Colonia Menonita Masisea", r:"Ucayali", c:"tala (menonitas)", lon:-74.32, lat:-8.62},
+  {n:"Aguaytía – Padre Abad", r:"Ucayali", c:"palma aceitera", lon:-75.50, lat:-9.04},
+  {n:"Pichis – Palcazú", r:"Pasco", c:"agricultura / ganadería", lon:-75.00, lat:-10.00},
+  {n:"VRAEM", r:"Ayacucho / Cusco", c:"cultivos de coca", lon:-73.90, lat:-12.60},
+  {n:"Tocache", r:"San Martín", c:"palma / coca", lon:-76.51, lat:-8.18},
+];
+HOTSPOTS.forEach((h,i) => {
+  const o = document.createElement("option");
+  o.value = i; o.textContent = `${h.n} — ${h.r} (${h.c})`;
+  $("hotspots").appendChild(o);
+});
+function boxAround(lon, lat, km){
+  const half = km/2, dLat = half/111, dLon = half/(111*Math.cos(lat*Math.PI/180));
+  return [lon-dLon, lat-dLat, lon+dLon, lat+dLat];
+}
+$("hotspots").onchange = e => {
+  const h = HOTSPOTS[+e.target.value];
+  if(!h) return;
+  setMode("pan");
+  map.flyTo({center:[h.lon,h.lat], zoom:13.2});
+  setBbox(boxAround(h.lon, h.lat, 2.5));   // AOI ~2.5 km listo para generar
+  $("aoi-info").innerHTML = `<b>${h.n}</b> · ${h.r}<br>${h.c}` +
+    `<br>${bbox.map(v=>v.toFixed(4)).join(", ")} · ~2.5 km`;
+};
+
+map.on("click", e => {
+  if (mode!=="draw") return;
+  const p=[e.lngLat.lng,e.lngLat.lat];
+  if(!corner1){ corner1=p; } else {
+    setBbox([corner1[0],corner1[1],p[0],p[1]]); setMode("pan");
+  }
+});
+map.on("mousemove", e => {
+  if(mode!=="draw"||!corner1) return;
+  const p=[e.lngLat.lng,e.lngLat.lat];
+  map.getSource("aoi").setData(rectGeo([corner1[0],corner1[1],p[0],p[1]]));
+});
+
+// ---- sliders ----
+$("win").oninput = e => $("win-v").textContent = e.target.value;
+$("cloud").oninput = e => $("cloud-v").textContent = e.target.value+"%";
+$("thr").oninput = e => $("thr-v").textContent = (e.target.value/100).toFixed(2);
+$("op-mask").oninput = e => { if(map.getLayer("ov-mask"))
+  map.setPaintProperty("ov-mask","raster-opacity", e.target.value/100); };
+
+function toggleLayer(id, on){ if(map.getLayer(id))
+  map.setLayoutProperty(id,"visibility", on?"visible":"none"); }
+$("ck-after").onchange = e => toggleLayer("ov-after", e.target.checked);
+$("ck-before").onchange = e => toggleLayer("ov-before", e.target.checked);
+$("ck-mask").onchange = e => toggleLayer("ov-mask", e.target.checked);
+
+function showErr(msg){ const el=$("err"); el.textContent=msg; el.style.display="block"; }
+function clearErr(){ $("err").style.display="none"; }
+
+function imgCoords(b){ const[w,s,e,n]=b; return [[w,n],[e,n],[e,s],[w,s]]; }
+function setOverlay(id, url, b, opacity){
+  const coords=imgCoords(b);
+  if(map.getLayer(id)) map.removeLayer(id);
+  if(map.getSource(id)) map.removeSource(id);
+  map.addSource(id,{type:"image",url,coordinates:coords});
+  map.addLayer({id,type:"raster",source:id,paint:{"raster-opacity":opacity,"raster-fade-duration":0}});
+}
+
+// ---- predicción ----
+$("run").onclick = async () => {
+  if(!bbox) return;
+  clearErr();
+  $("spin").classList.add("on"); $("run").disabled=true; $("spin-txt").textContent="Buscando escenas…";
+  const body = {
+    bbox, before:$("d-before").value, after:$("d-after").value,
+    window_days:+$("win").value, max_cloud:+$("cloud").value,
+    threshold:+$("thr").value/100, size:384,
+  };
+  try {
+    const r = await fetch(apiBase()+"/api/predict", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.detail || ("HTTP "+r.status));
+
+    $("r-before").src=data.rgb_before; $("r-after").src=data.rgb_after;
+    $("r-after2").src=data.rgb_after; $("r-mask").src=data.mask;
+    $("results").style.display="flex"; $("ov-ctl").style.display="block";
+
+    setOverlay("ov-before", data.rgb_before, data.bounds, 1);
+    setOverlay("ov-after", data.rgb_after, data.bounds, 1);
+    setOverlay("ov-mask", data.mask, data.bounds, $("op-mask").value/100);
+    toggleLayer("ov-before", $("ck-before").checked);
+    toggleLayer("ov-after", $("ck-after").checked);
+    map.fitBounds([[data.bounds[0],data.bounds[1]],[data.bounds[2],data.bounds[3]]],{padding:60});
+
+    const st=data.stats, sb=data.before_scene, sa=data.after_scene;
+    $("stats").innerHTML =
+      `<h2>Estadísticas</h2>`+
+      `<div class="stat"><span>Deforestación</span><b class="big">${st.deforested_ha} ha</b></div>`+
+      `<div class="stat"><span>% del AOI</span><b>${(st.deforested_fraction*100).toFixed(1)}%</b></div>`+
+      `<div class="stat"><span>Área AOI</span><b>${st.area_ha} ha</b></div>`+
+      `<div class="stat"><span>Umbral</span><b>${st.threshold}</b></div>`+
+      `<div class="stat"><span>Escena antes</span><b>${sb.datetime} · ${sb.cloud}% nube</b></div>`+
+      `<div class="stat"><span>Escena después</span><b>${sa.datetime} · ${sa.cloud}% nube</b></div>`+
+      `<div class="stat"><span>Cómputo</span><b>${st.device}</b></div>`;
+  } catch(err){
+    showErr("Error: "+err.message);
+  } finally {
+    $("spin").classList.remove("on"); $("run").disabled=false;
+  }
+};
+</script>
+</body>
+</html>
